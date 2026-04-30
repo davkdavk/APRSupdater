@@ -68,18 +68,20 @@
             "Hospital (Alt)", "Police (Alt)", "Marker (Alt)", "Circle (Alt)"
         ];
 
+        let localObjects = [];
+        let saveTimeout = null;
+
         function loadConfig() {
-            console.log('Loading config...');
             fetch('/api/config').then(r => r.json()).then(cfg => {
-                console.log('Config loaded:', cfg);
                 document.getElementById('callsign').value = cfg.callsign || '';
                 document.getElementById('passcode').value = cfg.passcode || '';
                 document.getElementById('api_key').value = cfg.api_key || '';
                 document.getElementById('server').value = cfg.server || 'rotate.aprs.net';
                 document.getElementById('port').value = cfg.port || '14580';
                 document.getElementById('interval').value = cfg.interval || 15;
-                renderObjects(cfg.objects || []);
-            }).catch(err => console.error('Load error:', err));
+                localObjects = cfg.objects || [];
+                renderObjects();
+            });
         }
 
         function saveConfig() {
@@ -90,33 +92,121 @@
                 server: document.getElementById('server').value,
                 port: document.getElementById('port').value,
                 interval: parseInt(document.getElementById('interval').value) || 15,
-                objects: getObjectsFromUI()
+                objects: localObjects
             };
             fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)})
                 .then(r => r.json()).then(d => alert('Saved: ' + d.status));
         }
 
-        function renderObjects(objs) {
+        function renderObjects() {
             const div = document.getElementById('objects');
             div.innerHTML = '';
-            for (let i = 0; i < objs.length; i++) {
-                const o = objs[i] || {};
+            for (let i = 0; i < localObjects.length; i++) {
+                const o = localObjects[i] || {};
                 const d = document.createElement('div');
                 d.className = 'obj' + (o.enabled ? ' enabled' : '');
-                d.innerHTML = `
-                    <b>Object ${i+1}</b>
-                    <label>Name: <input onchange="objChanged(${i}, 'name', this.value)" value="${o.name||''}" style="width:120px"></label>
-                    <label>Symbol: <select onchange="objChanged(${i}, 'symbol', this.value)">
-                        ${symbols.map(s => `<option ${o.symbol===s?'selected':''}>${s}</option>`).join('')}
-                    </select></label>
-                    <label>Lat: <input onchange="objChanged(${i}, 'latitude', this.value)" value="${o.latitude||''}" style="width:100px"></label>
-                    <label>Lon: <input onchange="objChanged(${i}, 'longitude', this.value)" value="${o.longitude||''}" style="width:100px"></label><br>
-                    <label>Desc: <textarea onchange="objChanged(${i}, 'description', this.value)" rows="3" style="width:400px; font-family:monospace">${o.description||''}</textarea></label>
-                    <label><input type="checkbox" onchange="objChanged(${i}, 'enabled', this.checked)" ${o.enabled?'checked':''}> Enabled</label>
-                    <button onclick="deleteObj(${i})">Delete</button>
-                `;
+                
+                const nameInput = document.createElement('input');
+                nameInput.value = o.name || '';
+                nameInput.style.width = '120px';
+                nameInput.oninput = () => { localObjects[i].name = nameInput.value; debouncedSave(); };
+                
+                const symbolSelect = document.createElement('select');
+                symbols.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.text = s;
+                    if (o.symbol === s) opt.selected = true;
+                    symbolSelect.appendChild(opt);
+                });
+                symbolSelect.onchange = () => { localObjects[i].symbol = symbolSelect.value; debouncedSave(); };
+                
+                const latInput = document.createElement('input');
+                latInput.value = o.latitude || '';
+                latInput.style.width = '100px';
+                latInput.oninput = () => { localObjects[i].latitude = latInput.value; debouncedSave(); };
+                
+                const lonInput = document.createElement('input');
+                lonInput.value = o.longitude || '';
+                lonInput.style.width = '100px';
+                lonInput.oninput = () => { localObjects[i].longitude = lonInput.value; debouncedSave(); };
+                
+                const descTextarea = document.createElement('textarea');
+                descTextarea.value = o.description || '';
+                descTextarea.rows = 3;
+                descTextarea.style.width = '400px';
+                descTextarea.style.fontFamily = 'monospace';
+                descTextarea.oninput = () => { localObjects[i].description = descTextarea.value; debouncedSave(); };
+                
+                const enabledCheckbox = document.createElement('input');
+                enabledCheckbox.type = 'checkbox';
+                enabledCheckbox.checked = o.enabled || false;
+                enabledCheckbox.onchange = () => { localObjects[i].enabled = enabledCheckbox.checked; debouncedSave(); };
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => { deleteObj(i); };
+                
+                d.innerHTML = `<b>Object ${i+1}</b> `;
+                d.appendChild(document.createTextNode('Name: '));
+                d.appendChild(nameInput);
+                d.appendChild(document.createTextNode(' Symbol: '));
+                d.appendChild(symbolSelect);
+                d.appendChild(document.createElement('br'));
+                d.appendChild(document.createTextNode('Lat: '));
+                d.appendChild(latInput);
+                d.appendChild(document.createTextNode(' Lon: '));
+                d.appendChild(lonInput);
+                d.appendChild(document.createElement('br'));
+                d.appendChild(document.createTextNode('Desc: '));
+                d.appendChild(descTextarea);
+                d.appendChild(document.createElement('br'));
+                d.appendChild(enabledCheckbox);
+                d.appendChild(document.createTextNode(' Enabled '));
+                d.appendChild(deleteBtn);
+                
                 div.appendChild(d);
             }
+        }
+
+        function debouncedSave() {
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                saveObjectsOnly();
+            }, 500);
+        }
+
+        function saveObjectsOnly() {
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                cfg.objects = localObjects;
+                fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)});
+            });
+        }
+
+        function deleteObj(idx) {
+            localObjects[idx] = {name:'', symbol:'House (Primary)', latitude:'', longitude:'', description:'', enabled:false};
+            renderObjects();
+            debouncedSave();
+        }
+
+        function startDaemon() {
+            fetch('/api/daemon/start', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function stopDaemon() {
+            fetch('/api/daemon/stop', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function sendNow() {
+            fetch('/api/send', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function updateStatus() {
+            fetch('/api/status').then(r => r.json()).then(s => {
+                const el = document.getElementById('status');
+                el.className = 'status ' + (s.daemon_running ? 'running' : 'stopped');
+                el.textContent = s.daemon_running ? 'Daemon Running' : 'Daemon Stopped';
+            });
         }
 
         function exportConfig() {
@@ -147,60 +237,9 @@
             reader.readAsText(file);
         }
 
-        function getObjectsFromUI() {
-            const objs = [];
-            document.querySelectorAll('.obj').forEach((div, i) => {
-                const inputs = div.querySelectorAll('input');
-                const select = div.querySelector('select');
-                objs.push({
-                    name: inputs[0]?.value || '',
-                    symbol: select?.value || 'House (Primary)',
-                    latitude: inputs[1]?.value || '',
-                    longitude: inputs[2]?.value || '',
-                    description: inputs[3]?.value || '',
-                    enabled: inputs[4]?.checked || false
-                });
-            });
-            return objs;
-        }
-
-        function objChanged(idx, field, val) {
-            fetch('/api/config').then(r => r.json()).then(cfg => {
-                if (!cfg.objects) cfg.objects = [];
-                while (cfg.objects.length <= idx) cfg.objects.push({});
-                cfg.objects[idx][field] = val;
-                fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)});
-            });
-        }
-
-        function deleteObj(idx) {
-            fetch('/api/objects/' + idx, {method: 'DELETE'}).then(() => loadConfig());
-        }
-
-        function startDaemon() {
-            fetch('/api/daemon/start', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
-        }
-
-        function stopDaemon() {
-            fetch('/api/daemon/stop', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
-        }
-
-        function sendNow() {
-            fetch('/api/send', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
-        }
-
-        function updateStatus() {
-            fetch('/api/status').then(r => r.json()).then(s => {
-                const el = document.getElementById('status');
-                el.className = 'status ' + (s.daemon_running ? 'running' : 'stopped');
-                el.textContent = s.daemon_running ? 'Daemon Running' : 'Daemon Stopped';
-            });
-        }
-
         loadConfig();
         updateStatus();
         setInterval(updateStatus, 5000);
-        setInterval(loadConfig, 10000);
     </script>
 </body>
 </html>
