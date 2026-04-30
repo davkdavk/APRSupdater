@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>APRS Updater Daemon</title>
+    <style>
+        body { font-family: monospace; max-width: 900px; margin: 20px auto; padding: 0 20px; }
+        h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        .section { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        label { display: block; margin: 5px 0; }
+        input, select, button { font-family: monospace; padding: 5px; margin: 2px; }
+        button { cursor: pointer; background: #007bff; color: white; border: none; border-radius: 3px; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; }
+        .obj { border: 1px solid #ddd; padding: 10px; margin: 5px 0; }
+        .enabled { background: #e6ffe6; }
+        .log { background: #000; color: #0f0; padding: 10px; height: 200px; overflow-y: scroll; font-size: 12px; }
+        .status { padding: 5px; margin: 5px 0; border-radius: 3px; }
+        .running { background: #d4edda; color: #155724; }
+        .stopped { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>APRS Updater Daemon</h1>
+    
+    <div class="section">
+        <h2>Status</h2>
+        <div id="status" class="status stopped">Loading...</div>
+        <button onclick="startDaemon()">Start Daemon</button>
+        <button onclick="stopDaemon()">Stop Daemon</button>
+        <button onclick="sendNow()">Send Now</button>
+    </div>
+
+    <div class="section">
+        <h2>Connection Settings</h2>
+        <label>Callsign: <input id="callsign" style="width:100px"></label>
+        <label>Passcode: <input id="passcode" style="width:80px" type="password"></label>
+        <label>Server: <input id="server" style="width:200px"></label>
+        <label>Port: <input id="port" style="width:60px"></label>
+        <label>Interval (min): <input id="interval" style="width:60px" type="number"></label>
+        <button onclick="saveConfig()">Save Config</button>
+    </div>
+
+    <div class="section">
+        <h2>Objects</h2>
+        <div id="objects"></div>
+    </div>
+
+    <div class="section">
+        <h2>Log</h2>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        const symbols = [
+            "House (Primary)", "House w/ HF (Alt)", "Red Cross (Primary)", "Red Cross (Alt)",
+            "Helicopter (Primary)", "Helicopter (Alt)", "Plane (Primary)", "Plane (Alt)",
+            "Car (Primary)", "Car (Alt)", "Boat (Alt)", "Sailboat (Alt)",
+            "Lighthouse (Alt)", "RV (Primary)", "RV (Alt)", "Repeater Tower",
+            "Radio Tower (Primary)", "Shack w/ Antenna", "Restaurant (Alt)",
+            "Bicycle (Alt)", "Fire (Alt)", "Church (Alt)", "School (Alt)",
+            "Hospital (Alt)", "Police (Alt)", "Marker (Alt)", "Circle (Alt)"
+        ];
+
+        function loadConfig() {
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                document.getElementById('callsign').value = cfg.callsign || '';
+                document.getElementById('passcode').value = cfg.passcode || '';
+                document.getElementById('server').value = cfg.server || 'rotate.aprs.net';
+                document.getElementById('port').value = cfg.port || '14580';
+                document.getElementById('interval').value = cfg.interval || 15;
+                renderObjects(cfg.objects || []);
+            });
+        }
+
+        function saveConfig() {
+            const cfg = {
+                callsign: document.getElementById('callsign').value,
+                passcode: document.getElementById('passcode').value,
+                server: document.getElementById('server').value,
+                port: document.getElementById('port').value,
+                interval: parseInt(document.getElementById('interval').value) || 15,
+                objects: getObjectsFromUI()
+            };
+            fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)})
+                .then(r => r.json()).then(d => alert('Saved: ' + d.status));
+        }
+
+        function renderObjects(objs) {
+            const div = document.getElementById('objects');
+            div.innerHTML = '';
+            for (let i = 0; i < objs.length; i++) {
+                const o = objs[i] || {};
+                const d = document.createElement('div');
+                d.className = 'obj' + (o.enabled ? ' enabled' : '');
+                d.innerHTML = `
+                    <b>Object ${i+1}</b>
+                    <label>Name: <input onchange="objChanged(${i}, 'name', this.value)" value="${o.name||''}" style="width:120px"></label>
+                    <label>Symbol: <select onchange="objChanged(${i}, 'symbol', this.value)">
+                        ${symbols.map(s => `<option ${o.symbol===s?'selected':''}>${s}</option>`).join('')}
+                    </select></label>
+                    <label>Lat: <input onchange="objChanged(${i}, 'latitude', this.value)" value="${o.latitude||''}" style="width:100px"></label>
+                    <label>Lon: <input onchange="objChanged(${i}, 'longitude', this.value)" value="${o.longitude||''}" style="width:100px"></label>
+                    <label>Desc: <input onchange="objChanged(${i}, 'description', this.value)" value="${o.description||''}" style="width:200px"></label>
+                    <label><input type="checkbox" onchange="objChanged(${i}, 'enabled', this.checked)" ${o.enabled?'checked':''}> Enabled</label>
+                    <button onclick="deleteObj(${i})">Delete</button>
+                `;
+                div.appendChild(d);
+            }
+        }
+
+        function getObjectsFromUI() {
+            return [];
+        }
+
+        function objChanged(idx, field, val) {
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                if (!cfg.objects) cfg.objects = [];
+                while (cfg.objects.length <= idx) cfg.objects.push({});
+                cfg.objects[idx][field] = val;
+                fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)});
+            });
+        }
+
+        function deleteObj(idx) {
+            fetch('/api/objects/' + idx, {method: 'DELETE'}).then(() => loadConfig());
+        }
+
+        function startDaemon() {
+            fetch('/api/daemon/start', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function stopDaemon() {
+            fetch('/api/daemon/stop', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function sendNow() {
+            fetch('/api/send', {method: 'POST'}).then(r => r.json()).then(d => alert(d.status));
+        }
+
+        function updateStatus() {
+            fetch('/api/status').then(r => r.json()).then(s => {
+                const el = document.getElementById('status');
+                el.className = 'status ' + (s.daemon_running ? 'running' : 'stopped');
+                el.textContent = s.daemon_running ? 'Daemon Running' : 'Daemon Stopped';
+            });
+        }
+
+        loadConfig();
+        updateStatus();
+        setInterval(updateStatus, 5000);
+        setInterval(loadConfig, 10000);
+    </script>
+</body>
+</html>
