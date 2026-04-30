@@ -1,13 +1,16 @@
 package main
 
 import (
-    "encoding/json"
-    "fmt"
-    "log"
-    "os"
-    "path/filepath"
-    "sync"
-    "time"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 type ObjectConfig struct {
@@ -58,10 +61,116 @@ var aprsSymbols = map[string]string{
     "Circle (Alt)":          "\\o",
 }
 
-type APRSClient struct{ connected bool }
-func (a *APRSClient) Connect(server, port, callsign, passcode string) error { a.connected = true; return nil }
-func (a *APRSClient) SendObject(callsign, objName, lat, lon, symbol, desc string) error { if !a.connected { return fmt.Errorf("not connected") }; return nil }
-func (a *APRSClient) Close() { a.connected = false }
+type APRSClient struct {
+	conn net.Conn
+}
+
+func (a *APRSClient) Connect(server, port, callsign, passcode string) error {
+	addr := server + ":" + port
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("connect failed: %v", err)
+	}
+	a.conn = conn
+
+	// Read welcome message
+	buf := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, _ := conn.Read(buf)
+
+	// Login to APRS-IS
+	login := fmt.Sprintf("user %s pass %s vers APRSupdater 1.0\r\n", callsign, passcode)
+	conn.Write([]byte(login))
+
+	// Wait for login response
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, err = conn.Read(buf)
+	if err != nil {
+		a.Close()
+		return fmt.Errorf("login failed: %v", err)
+	}
+	resp := string(buf[:n])
+	if strings.Contains(resp, "unverified") || strings.Contains(resp, "invalid") {
+		a.Close()
+		return fmt.Errorf("authentication failed")
+	}
+	log.Printf("APRS-IS connected: %s", server)
+	return nil
+}
+
+func (a *APRSClient) SendObject(callsign, objName, lat, lon, symbol, desc string) error {
+	if a.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	// Format: ;OBJNAME*tsLAT[table]LON[code][desc]\r\n
+	// Example: ;VK5ARC*011423z3517.10S/13828.39EeShack\r\n
+
+	// Pad object name to 9 chars
+	objNamePadded := fmt.Sprintf("%-9s", objName)[:9]
+
+	// Get current timestamp
+	now := time.Now().UTC()
+	ts := now.Format("021504") + "z" // DDMMSSz
+
+	// Format lat/lon
+	latF, err := formatAPRSLat(lat)
+	if err != nil {
+		return fmt.Errorf("invalid lat: %v", err)
+	}
+	lonF, err := formatAPRSLon(lon)
+	if err != nil {
+		return fmt.Errorf("invalid lon: %v", err)
+	}
+
+	// Build packet
+	body := fmt.Sprintf(";%s*%s%s%s%s%s%s",
+		objNamePadded, ts, latF, symbol[:1], lonF, symbol[1:], desc)
+
+	// Full packet with source and path
+	packet := fmt.Sprintf("%s>APRS,TCPIP*:%s\r\n", callsign, body)
+
+	log.Printf("SEND: %s", packet)
+	_, err = a.conn.Write([]byte(packet))
+	return err
+}
+
+func (a *APRSClient) Close() {
+	if a.conn != nil {
+		a.conn.Close()
+		a.conn = nil
+	}
+}
+
+func formatAPRSLat(latStr string) (string, error) {
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		return "", err
+	}
+	hemi := "N"
+	if lat < 0 {
+		hemi = "S"
+		lat = -lat
+	}
+	deg := int(lat)
+	min := (lat - float64(deg)) * 60
+	return fmt.Sprintf("%02d%05.2f%s", deg, min, hemi), nil
+}
+
+func formatAPRSLon(lonStr string) (string, error) {
+	lon, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		return "", err
+	}
+	hemi := "E"
+	if lon < 0 {
+		hemi = "W"
+		lon = -lon
+	}
+	deg := int(lon)
+	min := (lon - float64(deg)) * 60
+	return fmt.Sprintf("%03d%05.2f%s", deg, min, hemi), nil
+}
 
 func configPath() string {
     home, err := os.UserHomeDir()
