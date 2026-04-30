@@ -111,7 +111,20 @@
         }
 
         function getObjectsFromUI() {
-            return [];
+            const objs = [];
+            document.querySelectorAll('.obj').forEach((div, i) => {
+                const inputs = div.querySelectorAll('input');
+                const select = div.querySelector('select');
+                objs.push({
+                    name: inputs[0]?.value || '',
+                    symbol: select?.value || 'House (Primary)',
+                    latitude: inputs[1]?.value || '',
+                    longitude: inputs[2]?.value || '',
+                    description: inputs[3]?.value || '',
+                    enabled: inputs[4]?.checked || false
+                });
+            });
+            return objs;
         }
 
         function objChanged(idx, field, val) {
