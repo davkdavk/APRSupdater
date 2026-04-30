@@ -1,0 +1,90 @@
+{
+  "callsign": "VK5ARC",
+  "passcode": "17067",
+  "server": "aunz.aprs2.net",
+  "port": "14580",
+  "interval": 25,
+  "aprsfi_api_key": " 227872.YCJo5Ckluyj1AXLi",
+  "objects": [
+    {
+      "name": "VK5ARC",
+      "symbol": "House w/ HF (Alt)",
+      "latitude": "-35.1169",
+      "longitude": "138.4732",
+      "description": "Meetings every Thursday at 6:30 PM for a 6:45 PM start at the Karawatha Community Centre in O’Sullivan Beach",
+      "enabled": true
+    },
+    {
+      "name": "VK5RSV",
+      "symbol": "Repeater Tower",
+      "latitude": "-35.2599",
+      "longitude": "138.6128",
+      "description": "Every Wednesday night club net starting at 8pm on 80m 3.620mhz and then over to the 2M Net on FM 146.675 -600k T91.5 linked to Victor Habor VK5RVH 438.525 -5 T91.5",
+      "enabled": true
+    },
+    {
+      "name": "VK5ARC/P",
+      "symbol": "Lighthouse (Alt)",
+      "latitude": "-35.513667",
+      "longitude": "139.185167",
+      "description": "VK5ARC/P ILLW Station AU0029 15-17th August 2026 - ALL HF Bands - Point Malcolm Lighthouse. QSL via Bureau",
+      "enabled": true
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    },
+    {
+      "name": "",
+      "symbol": "",
+      "latitude": "",
+      "longitude": "",
+      "description": "",
+      "enabled": false
+    }
+  ]
+}
