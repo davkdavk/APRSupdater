@@ -3,14 +3,18 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"log"
 	"net/http"
 	"sync"
+	"embed"
 )
 
 var daemon = &Daemon{}
 var configMu sync.Mutex
+
+//go:embed web.html
+var webFS embed.FS
 
 func main() {
 	// Load config or use defaults
@@ -28,10 +32,10 @@ func main() {
 	}
 	_ = cfg // Will be used by API handlers via loadConfig()
 
-	// Serve web UI
+	// Serve web UI from embedded filesystem
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		data, err := ioutil.ReadFile("web.html")
+		data, err := fs.ReadFile(webFS, "web.html")
 		if err != nil {
 			http.Error(w, "web.html not found", 404)
 			return

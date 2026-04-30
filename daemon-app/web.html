@@ -36,10 +36,15 @@
         <h2>Connection Settings</h2>
         <label>Callsign: <input id="callsign" style="width:100px"></label>
         <label>Passcode: <input id="passcode" style="width:80px" type="password"></label>
+        <label>API Key: <input id="api_key" style="width:200px"></label>
         <label>Server: <input id="server" style="width:200px"></label>
         <label>Port: <input id="port" style="width:60px"></label>
         <label>Interval (min): <input id="interval" style="width:60px" type="number"></label>
         <button onclick="saveConfig()">Save Config</button>
+        <button onclick="loadConfig()">Reload Config</button>
+        <button onclick="exportConfig()">Export Config</button>
+        <button onclick="document.getElementById('importFile').click()">Import Config</button>
+        <input type="file" id="importFile" style="display:none" onchange="importConfig(this)">
     </div>
 
     <div class="section">
@@ -64,20 +69,24 @@
         ];
 
         function loadConfig() {
+            console.log('Loading config...');
             fetch('/api/config').then(r => r.json()).then(cfg => {
+                console.log('Config loaded:', cfg);
                 document.getElementById('callsign').value = cfg.callsign || '';
                 document.getElementById('passcode').value = cfg.passcode || '';
+                document.getElementById('api_key').value = cfg.api_key || '';
                 document.getElementById('server').value = cfg.server || 'rotate.aprs.net';
                 document.getElementById('port').value = cfg.port || '14580';
                 document.getElementById('interval').value = cfg.interval || 15;
                 renderObjects(cfg.objects || []);
-            });
+            }).catch(err => console.error('Load error:', err));
         }
 
         function saveConfig() {
             const cfg = {
                 callsign: document.getElementById('callsign').value,
                 passcode: document.getElementById('passcode').value,
+                api_key: document.getElementById('api_key').value,
                 server: document.getElementById('server').value,
                 port: document.getElementById('port').value,
                 interval: parseInt(document.getElementById('interval').value) || 15,
@@ -101,13 +110,41 @@
                         ${symbols.map(s => `<option ${o.symbol===s?'selected':''}>${s}</option>`).join('')}
                     </select></label>
                     <label>Lat: <input onchange="objChanged(${i}, 'latitude', this.value)" value="${o.latitude||''}" style="width:100px"></label>
-                    <label>Lon: <input onchange="objChanged(${i}, 'longitude', this.value)" value="${o.longitude||''}" style="width:100px"></label>
-                    <label>Desc: <input onchange="objChanged(${i}, 'description', this.value)" value="${o.description||''}" style="width:200px"></label>
+                    <label>Lon: <input onchange="objChanged(${i}, 'longitude', this.value)" value="${o.longitude||''}" style="width:100px"></label><br>
+                    <label>Desc: <textarea onchange="objChanged(${i}, 'description', this.value)" rows="3" style="width:400px; font-family:monospace">${o.description||''}</textarea></label>
                     <label><input type="checkbox" onchange="objChanged(${i}, 'enabled', this.checked)" ${o.enabled?'checked':''}> Enabled</label>
                     <button onclick="deleteObj(${i})">Delete</button>
                 `;
                 div.appendChild(d);
             }
+        }
+
+        function exportConfig() {
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                const data = JSON.stringify(cfg, null, 2);
+                const blob = new Blob([data], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'aprsupdater.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function importConfig(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const cfg = JSON.parse(e.target.result);
+                fetch('/api/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg)})
+                    .then(r => r.json()).then(d => {
+                        alert('Imported: ' + d.status);
+                        loadConfig();
+                    });
+            };
+            reader.readAsText(file);
         }
 
         function getObjectsFromUI() {

@@ -23,12 +23,13 @@ type ObjectConfig struct {
 }
 
 type Config struct {
-    Callsign string         `json:"callsign"`
-    Passcode string         `json:"passcode"`
-    Server   string         `json:"server"`
-    Port     string         `json:"port"`
-    Interval int            `json:"interval"`
-    Objects  []ObjectConfig `json:"objects"`
+	Callsign string         `json:"callsign"`
+	Passcode string         `json:"passcode"`
+	APIKey   string         `json:"api_key,omitempty"`
+	Server   string         `json:"server"`
+	Port     string         `json:"port"`
+	Interval int            `json:"interval"`
+	Objects  []ObjectConfig `json:"objects"`
 }
 
 var aprsSymbols = map[string]string{
@@ -173,9 +174,12 @@ func formatAPRSLon(lonStr string) (string, error) {
 }
 
 func configPath() string {
-    home, err := os.UserHomeDir()
-    if err != nil { return ".aprsupdater.json" }
-    return filepath.Join(home, ".aprsupdater.json")
+	exe, err := os.Executable()
+	if err != nil {
+		return "aprsupdater.json"
+	}
+	dir := filepath.Dir(exe)
+	return filepath.Join(dir, "aprsupdater.json")
 }
 
 func loadConfig() (Config, error) {
