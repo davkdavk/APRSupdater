@@ -227,11 +227,19 @@ func (d *Daemon) Start(cfg Config) error {
     go func() {
         ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Minute)
         defer ticker.Stop()
+        log.Printf("Daemon started with %d minute interval", cfg.Interval)
         for {
             select {
             case <-d.stop:
+                log.Println("Daemon stopped")
                 return
             case <-ticker.C:
+                log.Println("Daemon tick: reloading config and sending")
+                cfg, err := loadConfig()
+                if err != nil {
+                    log.Printf("Failed to reload config: %v", err)
+                    continue
+                }
                 sendAllObjects(cfg)
             }
         }

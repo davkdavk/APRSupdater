@@ -124,6 +124,21 @@ func main() {
 		http.Error(w, "Method not allowed", 405)
 	})
 
+	// API: Trigger immediate send (for testing)
+	http.HandleFunc("/api/daemon/tick", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		go sendAllObjects(cfg)
+		json.NewEncoder(w).Encode(map[string]string{"status": "tick triggered"})
+	})
+
 	// API: Send all enabled objects
 	http.HandleFunc("/api/send", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
